@@ -6,12 +6,11 @@ Class {
 
 { #category : #tests }
 PromiseTestFailures >> testFailedWhenResolvedCallsHandler [
-	| tmp1 tmp2 tmp3 |
-	tmp2 := Semaphore new.
-	tmp1 := [ 1 / 0 ] promise.
-	tmp3 := tmp1 whenResolved: [ :arg1 | 1 ] whenFailed: [ tmp2 signal ].
-	tmp2 wait.
-	self assert: true
+	| promise sema resolved |
+	sema := Semaphore new.
+	promise := [ 1 / 0 ] promise.
+	resolved := promise whenResolved: [ :arg1 | 1 ] whenFailed: [ sema signal ].
+	sema wait: 1 seconds onCompletion: [ self assert: true ] onTimeout: [ self assert: false ]
 ]
 
 { #category : #tests }
@@ -23,21 +22,22 @@ PromiseTestFailures >> testPromiseNotFinishedthrowsException [
 
 { #category : #tests }
 PromiseTestFailures >> testValueWhenResolvedPromiseThrowsError [
-	| tmp1 tmp2 tmp3 |
-	tmp2 := Semaphore new.
-	tmp1 := [ 1 + 1 ] promise.
-	tmp3 := tmp1 whenResolved: [ :arg1 | tmp2 signal ].
-	self should: [ tmp3 value ] raise: PromiseNotExecutable
+	| s promise resolved |
+	s := Semaphore new.
+	promise := [ 1 / 0 ] promise.
+	resolved := promise whenResolved: [ :arg1 | s signal ].
+	self should: [ resolved value ] raise: PromiseNotExecutable
 ]
 
 { #category : #tests }
 PromiseTestFailures >> testWhenResolvedWhenFailedReturnsPromise [
-	| tmp1 tmp2 tmp3 |
-	tmp2 := Semaphore new.
-	tmp1 := [ 1 + 1 ] promise.
-	tmp3 := tmp1
-		whenResolved: [ :arg1 | tmp2 signal ]
-		whenFailed: [ tmp2 signal ].
-	tmp2 wait.
-	self assert: tmp3 value class equals: Semaphore
+	| sema resolved promise |
+	sema := Semaphore new.
+	promise := [ 1 + 1 ] promise.
+	resolved := promise
+		whenResolved: [ :arg1 | sema signal ]
+		whenFailed: [ sema signal ].
+	sema wait: 1 seconds onCompletion: [ self assert: true ] onTimeout: [ self assert: false ].
+	self assert: resolved class equals: Promise. 
+	self assert: resolved value class equals: Semaphore.
 ]

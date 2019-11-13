@@ -5,9 +5,10 @@ Class {
 		'block',
 		'value',
 		'process',
-		'andthen',
+		'onSuccess',
 		'resolved',
-		'mutex'
+		'mutex',
+		'onFailure'
 	],
 	#category : #'META-LAB-Promises'
 }
@@ -40,7 +41,7 @@ Promise >> block: aBlock [
 Promise >> initialize [
 	block := [  ].
 	value := nil.
-	andthen := nil.
+	onSuccess := nil.
 	resolved := false.
 	mutex := Mutex new .
 ]
@@ -58,27 +59,36 @@ Promise >> start [
 { #category : #'as yet unclassified' }
 Promise >> start: arg1 [
 	process := [ 
-		value := block value: arg1.
+		value := [block value: arg1] 
+						on: Error 
+						do: onFailure.
 		mutex critical: [ 
 			resolved := true . 
-			andthen isNotNil
-				ifTrue: [ andthen start: value ] ] ] fork
+			onSuccess isNotNil
+				ifTrue: [ onSuccess start: value ] ] ] fork
 ]
 
 { #category : #'as yet unclassified' }
 Promise >> value [
-	^ value
+	^ resolved ifTrue: [ value ] ifFalse: [ PromiseNotResolved signal ]
 ]
 
 { #category : #'as yet unclassified' }
 Promise >> whenResolved: aBlock [
 	| old |
 	mutex critical: [ 
-		old := andthen .
-		andthen := old isNil
+		old := onSuccess .
+		onSuccess := old isNil
 					  	ifTrue: [ Promise withBlock: aBlock ]
 						ifFalse: [ Promise withBlock: [:v | old start:v; whenResolved: aBlock ]] .
-		resolved ifTrue: [ andthen start: value ] 
+		resolved ifTrue: [ onSuccess start: value ] 
 	].
-	^ andthen
+	^ onSuccess
+]
+
+{ #category : #'as yet unclassified' }
+Promise >> whenResolved: aBlock whenFailed: aFailBlock [
+	mutex critical: [ 
+		onFailure := aFailBlock ].
+	^ self whenResolved: aBlock
 ]
