@@ -21,8 +21,17 @@ DirectivesCompilerASTPlugin class >> branching: aDirectiveNode on: aBoolean [
 		-> [ :n :p | 
 			p
 				ifTrue: [ RBSequenceNode statements: {} ]
-				ifFalse: [ (n arguments at: 1) body ] ])}.
-	^ (branches at: aDirectiveNode selector) value: aBoolean value: aDirectiveNode
+				ifFalse: [ (n arguments at: 1) body ] ])} asDictionary.
+	^ (branches at: aDirectiveNode selector) value: aDirectiveNode value: aBoolean
+]
+
+{ #category : #private }
+DirectivesCompilerASTPlugin class >> evaluate: aRBBlockNode with: aCompiler [
+	| code cm |
+	code := String streamContents: [ :s | aRBBlockNode body printAsIfCompiledOn: s ].
+	cm := aCompiler source: code; noPattern: true; parse; doSemanticAnalysis.
+	(cm variableNodes allSatisfy: [ :n | n isGlobal or: n isTemp ]) ifFalse: [ CannotResolveAtCompileTime signal: code].
+	^ [ aCompiler evaluate ] on: Error do: [ CannotResolveAtCompileTime signal ]
 ]
 
 { #category : #private }
@@ -44,12 +53,14 @@ DirectivesCompilerASTPlugin >> transform [
 		select: [ :n | 
 			| sel |
 			sel := n selector.
-			sel = #_ifTrue:ifFalse:
-				or: (sel = #_ifTrue: or: sel = #_ifFalse) ].
+			n receiver isBlock "only blocks"
+				and: (sel = #_ifTrue:ifFalse:
+					or: (sel = #_ifTrue: or: sel = #_ifFalse:)) ].
 	nodes
 		do: [ :n | 
-			| pred |
-			pred := true.
-			n replaceWith: (n arguments at: 1) body ].
+			| result |
+			result := self class evaluate: (n receiver) with: (ast compilationContext getClass compiler).
+			(result class superclass = Boolean) ifFalse: [ CompileTimeCondMustBeBoolean signal ].
+			n replaceWith: (self class branching: n on: result) ].
 	^ a
 ]
