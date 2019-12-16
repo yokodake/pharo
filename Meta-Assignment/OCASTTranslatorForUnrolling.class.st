@@ -11,14 +11,39 @@ OCASTTranslatorForUnrolling >> emitToDo: aMessageNode [
 
 { #category : #enumerating }
 OCASTTranslatorForUnrolling >> emitUnrolledToDo: aMessageNode [
-	"| unrollFactor start body |
-	start := aMessageNode arguments first.
+	| unrollFactor start body end limit block iterator limitEmit |
+	start := aMessageNode receiver.
+	limit := aMessageNode arguments first.
 	unrollFactor := DirectivesCompilerASTPlugin
 		evaluate: (RBBlockNode body: (aMessageNode arguments at: 2))
 		with: self compilationContext getClass compiler.
-	body := aMessageNode arguments last"
+	block := aMessageNode arguments last.
+	iterator := block arguments first binding.
+	"emit how to compute the limit of the loop C/Ced from emitToDo"
+	limitEmit := [ valueTranslator visitNode: limit ].
+	limit isLiteralNode | limit isSelf | limit isSuper | limit isArgument
+		ifFalse: [ valueTranslator visitNode: limit.
+			methodBuilder addTemp: iterator name , #limit.
+			methodBuilder storeTemp: iterator name , #limit.
+			methodBuilder popTop.
+			limitEmit := [ methodBuilder pushTemp: iterator name , #limit ] ].
 
-	self emitUnrolledToDo_: aMessageNode
+	"push start. allocate and initialize iterator"
+	valueTranslator visitNode: aMessageNode receiver.
+	iterator emitStore: methodBuilder.
+	self isEffectTranslator
+		ifTrue: [ methodBuilder popTop ].
+	methodBuilder jumpBackTarget: #start.
+	iterator emitValue: methodBuilder.
+	limitEmit value.
+	methodBuilder
+		send:
+			(unrollFactor> 0
+				ifTrue: [ #<= ]
+				ifFalse: [ #>= ]).
+	methodBuilder jumpAheadTo: #done if: false.
+	effectTranslator visitInlinedBlockNode: block
+	"	self emitUnrolledToDo_: aMessageNode"
 ]
 
 { #category : #enumerating }
